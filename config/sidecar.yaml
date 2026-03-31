@@ -1,0 +1,25 @@
+# Sidecar 客户端配置
+sidecar:
+  server_addr: "ws://localhost:8443/sidecar/connect"  # 服务端 WebSocket 地址（生产使用 wss://）
+  token: "your-auth-token"                            # 鉴权 Token
+  reconnect_interval: 5s                              # 重连间隔基础值
+  max_reconnect_interval: 60s                         # 最大重连间隔
+  conn_alias: ""                                       # 可选：连接别名（用于 /{alias}/* 路由），留空则自动生成 UUID
+
+# 本地服务列表
+services:
+  - id: "user-service"
+    name: "用户服务"
+    protocol: "http"
+    local_addr: "http://127.0.0.1:8080"
+    expose_path: "/api/user"
+
+  - id: "order-grpc"
+    name: "订单 gRPC 服务"
+    protocol: "grpc"
+    local_addr: "127.0.0.1:9090"
+    expose_path: "/grpc/order"
+
+# 日志
+log:
+  level: "info"

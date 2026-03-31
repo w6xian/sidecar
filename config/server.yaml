@@ -1,0 +1,15 @@
+# 服务端配置
+server:
+  http_addr: ":8443"     # HTTP 入口网关监听地址
+  grpc_addr: ":9443"     # gRPC 入口网关监听地址
+  proxy_timeout: 30s     # 代理请求超时
+
+# 鉴权
+auth:
+  tokens:
+    - "your-auth-token"  # 允许的 Sidecar 连接 Token
+  ip_whitelist: []       # IP 白名单，为空则不限制
+
+# 日志
+log:
+  level: "info"          # debug / info / warn / error

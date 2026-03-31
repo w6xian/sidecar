@@ -1,0 +1,7 @@
+/vendor
+*.exe
+*.log
+conf.toml
+*.toml
+cmd/server/sqlm_logic.db
+cmd/sidecar/sidecar.pid

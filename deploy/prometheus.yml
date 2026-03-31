@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'sidecar-server'
+    static_configs:
+      - targets: ['sidecar-server:8443']
+    metrics_path: '/metrics'

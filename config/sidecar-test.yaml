@@ -1,0 +1,20 @@
+# Sidecar 客户端配置（测试）
+sidecar:
+  server_addr: "ws://localhost:8443/sidecar/connect"
+  token: "test-token-123"
+  conn_alias: "test-machine"
+  reconnect_interval: 5s
+  max_reconnect_interval: 60s
+
+# 本地服务列表
+services:
+  - id: "test-service"
+    name: "测试服务"
+    protocol: "http"
+    local_addr: "http://127.0.0.1:9999"
+    expose_path: "/api/test"
+
+
+# 日志
+log:
+  level: "info"

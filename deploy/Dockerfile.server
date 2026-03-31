@@ -1,0 +1,35 @@
+# ==== 构建阶段 ====
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
+
+# 安装依赖
+RUN apk add --no-cache git ca-certificates tzdata
+
+# 下载 Go 模块
+COPY go.mod go.sum ./
+RUN go mod download
+
+# 复制源码并构建
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-s -w" \
+    -o server \
+    ./cmd/server
+
+# ==== 运行阶段 ====
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder /build/server .
+COPY config/server.yaml ./config/server.yaml
+
+USER appuser
+
+EXPOSE 8443 9443
+
+ENTRYPOINT ["./server", "-config", "config/server.yaml"]

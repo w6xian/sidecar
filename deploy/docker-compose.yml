@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  # 服务端 Envoy
+  sidecar-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+    ports:
+      - "8443:8443"   # HTTP 网关
+      - "9443:9443"   # gRPC 网关
+    volumes:
+      - ../config/server.yaml:/app/config/server.yaml:ro
+    environment:
+      - SIDECAR_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8443/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # 示例：本地 Sidecar (用于开发测试)
+  sidecar-client:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.sidecar
+    volumes:
+      - ../config/sidecar.yaml:/app/config/sidecar.yaml:ro
+    environment:
+      - SIDECAR_LOG_LEVEL=debug
+    depends_on:
+      sidecar-server:
+        condition: service_healthy
+    restart: unless-stopped
+    # 注意：实际部署时 Sidecar 部署在内网机器上，而非与服务端同一网络
+
+  # 示例：模拟内网 HTTP 服务
+  mock-http-service:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+
+  # Prometheus 监控（可选）
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - sidecar-server
