@@ -1,7 +1,10 @@
 package main
 
 import (
-	"context"
+	"fmt"
+	"os"
+
+	"github.com/w6xian/keeper/service"
 )
 
 var (
@@ -10,5 +13,10 @@ var (
 )
 
 func main() {
-	rootCommand(context.Background(), "sidecar").Execute()
+	if err := service.Run(server_name, func() {
+		_ = rootCmd.Execute()
+	}); err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 }

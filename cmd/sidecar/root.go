@@ -17,24 +17,31 @@ import (
 	"github.com/w6xian/sidecar/internal/sidecar"
 	"github.com/w6xian/sidecar/internal/song"
 	"github.com/w6xian/sidecar/internal/timex"
+	"github.com/w6xian/sidecar/internal/utils/id"
 	"github.com/w6xian/sidecar/pkg/logger"
 	"github.com/w6xian/sidecar/pkg/utils"
 	"go.uber.org/zap"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-func rootCommand(ctx context.Context, appName string) *cobra.Command {
-	h := &Root{
-		Context: ctx,
-		Profile: config.NewProfile(),
-	}
-	h.FlagSet = flag.NewFlagSet(appName, flag.ContinueOnError)
-	cmd := &cobra.Command{
-		Use:   "sidecar",
-		Short: "sidecar is a cache manager",
-		RunE:  h.Run,
-	}
-	return cmd
+var rootCmd = &cobra.Command{
+	Use:   "sidecar",
+	Short: "Sidecar is a lightweight process manager and script executor",
+	Long:  `Sidecar allows you to manage processes and execute scripts with ease.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		h := &Root{
+			Context: context.Background(),
+			Profile: config.NewProfile(),
+		}
+		h.FlagSet = flag.NewFlagSet("sidecar", flag.ContinueOnError)
+		h.Run(cmd, args)
+	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().String("path", "", "working directory for service mode")
+	rootCmd.PersistentFlags().String("token", "", "service token")
+	_ = rootCmd.PersistentFlags().MarkHidden("token")
 }
 
 type Root struct {
@@ -45,6 +52,16 @@ type Root struct {
 }
 
 func (h *Root) Run(cmd *cobra.Command, args []string) error {
+	runPath, _ := cmd.PersistentFlags().GetString("path")
+	if runPath != "" {
+		if err := os.Chdir(runPath); err != nil {
+			return err
+		}
+	}
+	token, _ := cmd.PersistentFlags().GetString("token")
+	if token == "" {
+		token = id.ShortID()
+	}
 
 	ctx, cancel := context.WithCancel(h.Context)
 	defer cancel()

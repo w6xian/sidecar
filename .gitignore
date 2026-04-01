@@ -5,3 +5,4 @@ conf.toml
 *.toml
 cmd/server/sqlm_logic.db
 cmd/sidecar/sidecar.pid
+cmd/server/app.pid

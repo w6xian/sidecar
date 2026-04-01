@@ -1,0 +1,55 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/w6xian/keeper/service"
+	"github.com/w6xian/keeper/utils/pathx"
+
+	"github.com/spf13/cobra"
+)
+
+func init() {
+	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(uninstallCmd)
+}
+
+var server_name = "sst-sidecar"
+var display_name = "Sidecar"
+
+var installCmd = &cobra.Command{
+	Use:   "install",
+	Short: "注册为系统服务（开机自启）",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered from panic:", r)
+			}
+		}()
+		binPath := pathx.GetCaller()
+		svc := service.New(server_name, display_name)
+		if err := svc.Install(binPath, "abcd4"); err != nil {
+			return fmt.Errorf("注册服务失败: %w", err)
+		}
+		fmt.Println("系统服务已注册，隧道将开机自启")
+		return nil
+	},
+}
+
+var uninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "卸载系统服务",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered from panic:", r)
+			}
+		}()
+		svc := service.New(server_name, "Sidecar")
+		if err := svc.Uninstall(); err != nil {
+			return fmt.Errorf("卸载服务失败: %w", err)
+		}
+		fmt.Println("系统服务已卸载")
+		return nil
+	},
+}

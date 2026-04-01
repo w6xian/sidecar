@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"IoT-printer/internal/utils"
+	"github.com/w6xian/sidecar/internal/utils"
 )
 
 func GenerateSignature(apiSecret, apiKey, timestamp, nonce string, params url.Values) string {
