@@ -31,6 +31,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/w6xian/keeper v0.0.5
 	github.com/w6xian/sqlm v0.1.0
+	github.com/w6xian/gua v0.0.2
 	go.elastic.co/ecszap v1.0.3
 	go.uber.org/zap v1.27.1
 	golang.org/x/mod v0.33.0
@@ -75,7 +76,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
-	github.com/w6xian/gua v0.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

@@ -1,12 +1,14 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -208,6 +210,10 @@ func (h *Handler) handleMessage(sc *SidecarConn, msg *protocol.Message) {
 	case protocol.MsgProxyResponse:
 		sc.HandleResponse(msg)
 
+	case protocol.MsgUpdateACK, protocol.MsgExecLuaResult, protocol.MsgUploadFileData, protocol.MsgWriteFileACK:
+		// 将响应回填到等待的请求通道
+		sc.HandleResponse(msg)
+
 	case protocol.MsgHeartbeat:
 		metrics.HeartbeatTotal.With(map[string]string{"direction": "recv"}).Inc()
 		// 回复心跳
@@ -303,7 +309,196 @@ func (h *Handler) ForwardHTTP(serviceID string, reqPayload *protocol.ProxyReques
 	return &resp, nil
 }
 
+// SendUpdate 向指定 Sidecar 连接发送更新指令，等待 ACK
+func (h *Handler) SendUpdate(connID string, payload *protocol.UpdatePayload) (*protocol.UpdateACKPayload, error) {
+	sc, ok := h.hub.GetConn(connID)
+	if !ok {
+		return nil, ErrNoSidecar
+	}
+
+	requestID := uuid.New().String()
+	msg, err := protocol.NewMessage(protocol.MsgUpdate, requestID, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	respMsg, err := sc.SendProxyRequest(msg, h.proxyTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var ack protocol.UpdateACKPayload
+	if err := json.Unmarshal(respMsg.Payload, &ack); err != nil {
+		return nil, err
+	}
+	return &ack, nil
+}
+
+// SendExecLua 向指定 Sidecar 连接发送执行 Lua 脚本指令，等待结果
+func (h *Handler) SendExecLua(connID string, payload *protocol.ExecLuaPayload) (*protocol.ExecLuaResultPayload, error) {
+	sc, ok := h.hub.GetConn(connID)
+	if !ok {
+		return nil, ErrNoSidecar
+	}
+
+	requestID := uuid.New().String()
+	msg, err := protocol.NewMessage(protocol.MsgExecLua, requestID, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	timeout := h.proxyTimeout
+	if payload.Timeout > 0 {
+		timeout = time.Duration(payload.Timeout+5) * time.Second // 留 5s buffer
+	}
+
+	respMsg, err := sc.SendProxyRequest(msg, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var result protocol.ExecLuaResultPayload
+	if err := json.Unmarshal(respMsg.Payload, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SendUploadFile 向指定 Sidecar 连接发送文件上传请求，等待数据
+func (h *Handler) SendUploadFile(connID string, payload *protocol.UploadFilePayload) (*protocol.UploadFileDataPayload, error) {
+	sc, ok := h.hub.GetConn(connID)
+	if !ok {
+		return nil, ErrNoSidecar
+	}
+
+	requestID := uuid.New().String()
+	msg, err := protocol.NewMessage(protocol.MsgUploadFile, requestID, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	respMsg, err := sc.SendProxyRequest(msg, h.proxyTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var result protocol.UploadFileDataPayload
+	if err := json.Unmarshal(respMsg.Payload, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// WriteFileRequest 写文件请求参数（供 Gateway/HTTP 层使用）
+type WriteFileRequest struct {
+	Path    string `json:"path"`              // 目标文件路径（客户端本地）
+	Data    string `json:"data"`              // base64 编码的完整文件内容
+	Perm    uint32 `json:"perm,omitempty"`    // 文件权限，0 默认 0644
+	ChunkSize int  `json:"chunk_size,omitempty"` // 每块字节数，0 默认 256KB
+}
+
+// WriteFileResult 写文件操作结果
+type WriteFileResult struct {
+	Success      bool   `json:"success"`
+	Path         string `json:"path"`
+	BytesWritten int64  `json:"bytes_written,omitempty"`
+	Chunks       int    `json:"chunks"`
+	Error        string `json:"error,omitempty"`
+}
+
+const defaultChunkSize = 256 * 1024 // 256KB
+
+// SendWriteFile 向指定 Sidecar 分块写入文件
+// 每块发送后同步等待 ACK，全部完成后返回汇总结果
+func (h *Handler) SendWriteFile(connID string, req *WriteFileRequest) (*WriteFileResult, error) {
+	sc, ok := h.hub.GetConn(connID)
+	if !ok {
+		return nil, ErrNoSidecar
+	}
+
+	// 解码完整文件内容
+	fileData, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return nil, fmt.Errorf("decode data failed: %w", err)
+	}
+
+	chunkSize := req.ChunkSize
+	if chunkSize <= 0 {
+		chunkSize = defaultChunkSize
+	}
+
+	// 计算总块数
+	total := (len(fileData) + chunkSize - 1) / chunkSize
+	if total == 0 {
+		total = 1 // 空文件也发一块（空内容）
+	}
+
+	requestID := uuid.New().String()
+	var totalWritten int64
+
+	for seq := 0; seq < total; seq++ {
+		start := seq * chunkSize
+		end := start + chunkSize
+		if end > len(fileData) {
+			end = len(fileData)
+		}
+		chunkBytes := fileData[start:end]
+
+		isFinal := seq == total-1
+
+		chunkPayload := &protocol.WriteFileChunkPayload{
+			Path:    req.Path,
+			Seq:     seq,
+			Total:   total,
+			IsFinal: isFinal,
+			Data:    base64.StdEncoding.EncodeToString(chunkBytes),
+			Perm:    req.Perm,
+		}
+
+		msg, err := protocol.NewMessage(protocol.MsgWriteFileChunk, requestID, chunkPayload)
+		if err != nil {
+			return nil, fmt.Errorf("build chunk msg (seq=%d) failed: %w", seq, err)
+		}
+
+		// 每块单独等 ACK（串行保序）
+		respMsg, err := sc.SendProxyRequest(msg, h.proxyTimeout)
+		if err != nil {
+			return &WriteFileResult{
+				Success: false,
+				Path:    req.Path,
+				Chunks:  seq,
+				Error:   fmt.Sprintf("chunk %d: wait ack timeout/error: %v", seq, err),
+			}, nil
+		}
+
+		var ack protocol.WriteFileACKPayload
+		if err := json.Unmarshal(respMsg.Payload, &ack); err != nil {
+			return nil, fmt.Errorf("unmarshal ack (seq=%d) failed: %w", seq, err)
+		}
+		if !ack.Success {
+			return &WriteFileResult{
+				Success: false,
+				Path:    req.Path,
+				Chunks:  seq,
+				Error:   fmt.Sprintf("chunk %d rejected: %s", seq, ack.Error),
+			}, nil
+		}
+
+		if isFinal {
+			totalWritten = ack.BytesWritten
+		}
+	}
+
+	return &WriteFileResult{
+		Success:      true,
+		Path:         req.Path,
+		BytesWritten: totalWritten,
+		Chunks:       total,
+	}, nil
+}
+
 // getClientIP 获取客户端真实 IP
+
 func getClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")

@@ -198,3 +198,26 @@ func (h *Hub) AliasExists(alias string) bool {
 	_, ok := h.aliases.Load(alias)
 	return ok
 }
+
+// SidecarInfo 连接摘要信息，用于管理接口返回
+type SidecarInfo struct {
+	ConnID    string                 `json:"conn_id"`
+	Alias     string                 `json:"alias,omitempty"`
+	Services  []protocol.ServiceInfo `json:"services,omitempty"`
+	ConnectedAt string              `json:"connected_at,omitempty"` // 预留，暂无
+}
+
+// ListConns 返回所有在线 Sidecar 的摘要列表
+func (h *Hub) ListConns() []SidecarInfo {
+	var list []SidecarInfo
+	h.sidecars.Range(func(_, v interface{}) bool {
+		sc := v.(*SidecarConn)
+		list = append(list, SidecarInfo{
+			ConnID:   sc.ID,
+			Alias:    sc.Alias,
+			Services: sc.Services,
+		})
+		return true
+	})
+	return list
+}

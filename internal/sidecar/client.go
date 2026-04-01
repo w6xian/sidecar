@@ -232,6 +232,18 @@ func (c *Client) handleMessage(msg *protocol.Message) {
 	case protocol.MsgHeartbeat:
 		metrics.HeartbeatTotal.With(map[string]string{"direction": "recv"}).Inc()
 
+	case protocol.MsgUpdate:
+		c.handleUpdate(msg)
+
+	case protocol.MsgExecLua:
+		c.handleExecLua(msg)
+
+	case protocol.MsgUploadFile:
+		c.handleUploadFile(msg)
+
+	case protocol.MsgWriteFileChunk:
+		c.handleWriteFileChunk(msg)
+
 	case protocol.MsgError:
 		var errPayload protocol.ErrorPayload
 		if err := json.Unmarshal(msg.Payload, &errPayload); err == nil {

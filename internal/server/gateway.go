@@ -92,6 +92,21 @@ func (g *Gateway) BuildHTTPRouter() http.Handler {
 		json.NewEncoder(w).Encode(result)
 	})
 
+	// 列出所有在线 Sidecar 连接
+	r.Get("/admin/sidecars", g.adminListSidecarsHandler)
+
+	// 管理指令：向指定连接推送更新
+	r.Post("/admin/cmd/update/{connID}", g.adminUpdateHandler)
+
+	// 管理指令：向指定连接下发执行 Lua 脚本
+	r.Post("/admin/cmd/exec-lua/{connID}", g.adminExecLuaHandler)
+
+	// 管理指令：向指定连接请求上传文件（日志）
+	r.Post("/admin/cmd/upload-file/{connID}", g.adminUploadFileHandler)
+
+	// 管理指令：向指定连接写入文件（分段写入）
+	r.Post("/admin/cmd/write-file/{connID}", g.adminWriteFileHandler)
+
 	// 连接别名路由 — /{alias}/* 格式
 	// 必须放在通配路由之前，因为 chi 的路由匹配是按注册顺序
 	r.HandleFunc("/{alias}/*", g.proxyByAliasHandler)
@@ -507,4 +522,117 @@ func traceIDMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Trace-Id", traceID)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// adminUpdateHandler POST /admin/cmd/update/{connID}
+// Body JSON: protocol.UpdatePayload
+func (g *Gateway) adminUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	connID := chi.URLParam(r, "connID")
+	var payload protocol.UpdatePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	ack, err := g.handler.SendUpdate(connID, &payload)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(ack)
+}
+
+// adminExecLuaHandler POST /admin/cmd/exec-lua/{connID}
+// Body JSON: protocol.ExecLuaPayload
+func (g *Gateway) adminExecLuaHandler(w http.ResponseWriter, r *http.Request) {
+	connID := chi.URLParam(r, "connID")
+	var payload protocol.ExecLuaPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := g.handler.SendExecLua(connID, &payload)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+// adminListSidecarsHandler GET /admin/sidecars
+// 返回所有在线 Sidecar 连接列表（connID、alias、服务清单）
+func (g *Gateway) adminListSidecarsHandler(w http.ResponseWriter, r *http.Request) {
+	list := g.hub.ListConns()
+	if list == nil {
+		list = []SidecarInfo{} // 确保返回 [] 而非 null
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total":   len(list),
+		"sidecars": list,
+	})
+}
+
+// adminUploadFileHandler POST /admin/cmd/upload-file/{connID}
+// Body JSON: protocol.UploadFilePayload
+func (g *Gateway) adminUploadFileHandler(w http.ResponseWriter, r *http.Request) {
+	connID := chi.URLParam(r, "connID")
+	var payload protocol.UploadFilePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := g.handler.SendUploadFile(connID, &payload)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+// adminWriteFileHandler POST /admin/cmd/write-file/{connID}
+// 向 Sidecar 写入文件，支持分块传输。
+// Body JSON: WriteFileRequest
+//
+//	{
+//	  "path": "/etc/config/app.conf",    // 目标路径（客户端本地）
+//	  "data": "<base64 encoded content>", // 文件完整内容（base64）
+//	  "perm": 420,                        // 文件权限（可选，默认 0644=420）
+//	  "chunk_size": 262144                // 每块字节数（可选，默认 256KB）
+//	}
+func (g *Gateway) adminWriteFileHandler(w http.ResponseWriter, r *http.Request) {
+	connID := chi.URLParam(r, "connID")
+	var req WriteFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Path == "" {
+		http.Error(w, `{"error":"path is required"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Data == "" {
+		http.Error(w, `{"error":"data is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := g.handler.SendWriteFile(connID, &req)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+	if !result.Success {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	json.NewEncoder(w).Encode(result)
 }

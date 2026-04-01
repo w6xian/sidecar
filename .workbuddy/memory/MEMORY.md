@@ -71,3 +71,23 @@ curl http://server:8443/api/user/profile
 
 ### 测试状态
 ✅ 编译通过，功能实现完成，已修复所有已知 bug
+
+## 2026-04-01 功能扩展：三类控制指令
+
+### 新增指令
+1. **更新指令**（`UPDATE` / `UPDATE_ACK`）：服务端推送更新包地址 → 客户端下载、SHA256 校验、替换二进制、重启
+2. **Lua 脚本执行**（`EXEC_LUA` / `EXEC_LUA_RESULT`）：服务端下发脚本 → 客户端用 `github.com/w6xian/gua` 执行 → 返回输出
+3. **文件上传**（`UPLOAD_FILE` / `UPLOAD_FILE_DATA`）：服务端请求日志文件 → 客户端读取（支持 tail 行数）→ base64 回传
+
+### 管理 API 端点（POST）
+- `/admin/cmd/update/{connID}` — 推送更新
+- `/admin/cmd/exec-lua/{connID}` — 执行 Lua
+- `/admin/cmd/upload-file/{connID}` — 上传文件
+
+### 新增文件
+- `internal/sidecar/cmd_update.go`
+- `internal/sidecar/cmd_lua.go`
+- `internal/sidecar/cmd_upload.go`
+
+### 编译状态
+✅ `go build ./...` 通过
