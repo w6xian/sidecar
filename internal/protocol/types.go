@@ -38,6 +38,11 @@ const (
 	MsgWriteFileChunk MessageType = "WRITE_FILE_CHUNK"
 	// MsgWriteFileACK Local → Server：写文件分块确认
 	MsgWriteFileACK MessageType = "WRITE_FILE_ACK"
+
+	// MsgExecCmd Server → Local：执行指定可执行文件/命令
+	MsgExecCmd MessageType = "EXEC_CMD"
+	// MsgExecCmdResult Local → Server：执行命令结果
+	MsgExecCmdResult MessageType = "EXEC_CMD_RESULT"
 )
 
 // Protocol 定义服务协议类型

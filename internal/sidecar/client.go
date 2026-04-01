@@ -244,6 +244,9 @@ func (c *Client) handleMessage(msg *protocol.Message) {
 	case protocol.MsgWriteFileChunk:
 		c.handleWriteFileChunk(msg)
 
+	case protocol.MsgExecCmd:
+		c.handleExecCmd(msg)
+
 	case protocol.MsgError:
 		var errPayload protocol.ErrorPayload
 		if err := json.Unmarshal(msg.Payload, &errPayload); err == nil {

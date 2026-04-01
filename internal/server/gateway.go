@@ -107,6 +107,9 @@ func (g *Gateway) BuildHTTPRouter() http.Handler {
 	// 管理指令：向指定连接写入文件（分段写入）
 	r.Post("/admin/cmd/write-file/{connID}", g.adminWriteFileHandler)
 
+	// 管理指令：向指定连接下发执行命令（可执行文件）
+	r.Post("/admin/cmd/exec/{connID}", g.adminExecCmdHandler)
+
 	// 连接别名路由 — /{alias}/* 格式
 	// 必须放在通配路由之前，因为 chi 的路由匹配是按注册顺序
 	r.HandleFunc("/{alias}/*", g.proxyByAliasHandler)
@@ -633,6 +636,40 @@ func (g *Gateway) adminWriteFileHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	if !result.Success {
 		w.WriteHeader(http.StatusInternalServerError)
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+// adminExecCmdHandler POST /admin/cmd/exec/{connID}
+// 向指定 Sidecar 下发执行命令（可执行文件）指令。
+// Body JSON: protocol.ExecCmdPayload
+//
+//	{
+//	  "command": "/usr/local/bin/myapp",  // 可执行文件路径或命令
+//	  "args": ["--flag", "value"],        // 参数列表
+//	  "env": {"KEY": "VALUE"},            // 环境变量（可选）
+//	  "dir": "/tmp",                      // 工作目录（可选）
+//	  "timeout": 30,                      // 超时秒数（可选，默认 60s）
+//	  "stdin": "input data"               // 标准输入（可选）
+//	}
+func (g *Gateway) adminExecCmdHandler(w http.ResponseWriter, r *http.Request) {
+	connID := chi.URLParam(r, "connID")
+	var payload protocol.ExecCmdPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if payload.Command == "" {
+		http.Error(w, `{"error":"command is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := g.handler.SendExecCmd(connID, &payload)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
 	}
 	json.NewEncoder(w).Encode(result)
 }

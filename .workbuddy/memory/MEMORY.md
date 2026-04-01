@@ -91,3 +91,33 @@ curl http://server:8443/api/user/profile
 
 ### 编译状态
 ✅ `go build ./...` 通过
+
+## 2026-04-01 功能扩展：执行命令指令（EXEC_CMD）
+
+### 新增指令
+**执行命令**（`EXEC_CMD` / `EXEC_CMD_RESULT`）：服务端下发可执行文件路径+参数 → 客户端 `os/exec` 执行 → 捕获 stdout/stderr/exitCode 回传
+
+### 协议定义
+- `ExecCmdPayload`：command（可执行文件路径）、args（参数列表）、env（环境变量）、dir（工作目录）、timeout（超时秒数）、stdin（标准输入）
+- `ExecCmdResultPayload`：success、output、error、exit_code、elapsed
+
+### 管理 API
+- `POST /admin/cmd/exec/{connID}` — 执行远程命令
+
+### 新增/修改文件
+- `internal/protocol/types.go` — +2 消息类型
+- `internal/protocol/message.go` — +2 载荷结构体
+- `internal/sidecar/cmd_exec.go` — 新建，客户端执行命令逻辑
+- `internal/sidecar/client.go` — handleMessage 新增 MsgExecCmd 分发
+- `internal/server/handler.go` — 新增 SendExecCmd 方法 + MsgExecCmdResult 路由
+- `internal/server/gateway.go` — 新增 /admin/cmd/exec/{connID} 端点
+
+### 使用示例
+```bash
+curl -X POST http://server:8443/admin/cmd/exec/{connID} \
+  -H "Content-Type: application/json" \
+  -d '{"command": "/usr/local/bin/myapp", "args": ["--flag", "value"], "timeout": 30}'
+```
+
+### 编译状态
+✅ `go build ./...` 通过

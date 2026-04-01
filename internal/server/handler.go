@@ -210,7 +210,7 @@ func (h *Handler) handleMessage(sc *SidecarConn, msg *protocol.Message) {
 	case protocol.MsgProxyResponse:
 		sc.HandleResponse(msg)
 
-	case protocol.MsgUpdateACK, protocol.MsgExecLuaResult, protocol.MsgUploadFileData, protocol.MsgWriteFileACK:
+	case protocol.MsgUpdateACK, protocol.MsgExecLuaResult, protocol.MsgUploadFileData, protocol.MsgWriteFileACK, protocol.MsgExecCmdResult:
 		// 将响应回填到等待的请求通道
 		sc.HandleResponse(msg)
 
@@ -383,6 +383,36 @@ func (h *Handler) SendUploadFile(connID string, payload *protocol.UploadFilePayl
 	}
 
 	var result protocol.UploadFileDataPayload
+	if err := json.Unmarshal(respMsg.Payload, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SendExecCmd 向指定 Sidecar 连接发送执行命令指令，等待结果
+func (h *Handler) SendExecCmd(connID string, payload *protocol.ExecCmdPayload) (*protocol.ExecCmdResultPayload, error) {
+	sc, ok := h.hub.GetConn(connID)
+	if !ok {
+		return nil, ErrNoSidecar
+	}
+
+	requestID := uuid.New().String()
+	msg, err := protocol.NewMessage(protocol.MsgExecCmd, requestID, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	timeout := h.proxyTimeout
+	if payload.Timeout > 0 {
+		timeout = time.Duration(payload.Timeout+5) * time.Second // 留 5s buffer
+	}
+
+	respMsg, err := sc.SendProxyRequest(msg, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var result protocol.ExecCmdResultPayload
 	if err := json.Unmarshal(respMsg.Payload, &result); err != nil {
 		return nil, err
 	}

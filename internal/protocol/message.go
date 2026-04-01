@@ -199,9 +199,30 @@ type WriteFileChunkPayload struct {
 
 // WriteFileACKPayload 写文件分块确认（Local → Server）
 type WriteFileACKPayload struct {
-	Path      string `json:"path"`
-	Seq       int    `json:"seq"`               // 当前确认的块序号
-	Success   bool   `json:"success"`
-	Error     string `json:"error,omitempty"`
-	BytesWritten int64 `json:"bytes_written,omitempty"` // 最终块时回传总写入字节数
+	Path         string `json:"path"`
+	Seq          int    `json:"seq"`                // 当前确认的块序号
+	Success      bool   `json:"success"`
+	Error        string `json:"error,omitempty"`
+	BytesWritten int64  `json:"bytes_written,omitempty"` // 最终块时回传总写入字节数
+}
+
+// ----------- 执行命令（可执行文件） -----------
+
+// ExecCmdPayload 执行命令载荷（Server → Local）
+type ExecCmdPayload struct {
+	Command string            `json:"command"`            // 可执行文件路径或命令
+	Args    []string          `json:"args,omitempty"`     // 命令参数列表
+	Env     map[string]string `json:"env,omitempty"`      // 环境变量（会追加到系统环境变量中）
+	Dir     string            `json:"dir,omitempty"`      // 工作目录（空则使用当前目录）
+	Timeout int               `json:"timeout,omitempty"` // 超时秒数，0 表示默认 60s
+	Stdin   string            `json:"stdin,omitempty"`    // 标准输入内容（可选）
+}
+
+// ExecCmdResultPayload 执行命令结果（Local → Server）
+type ExecCmdResultPayload struct {
+	Success  bool   `json:"success"`
+	Output   string `json:"output,omitempty"`  // 标准输出（stdout）
+	Error    string `json:"error,omitempty"`   // 标准错误输出（stderr）
+	ExitCode int    `json:"exit_code"`         // 进程退出码
+	Elapsed  int64  `json:"elapsed,omitempty"` // 执行耗时（毫秒）
 }
